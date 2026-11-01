@@ -1,22 +1,21 @@
-"""Optional live BetterPosters smoke test (requires network access)."""
+"""Optional live test of an independently deployed PosterFlow server."""
 from pathlib import Path
-import json, subprocess
+import json,os,subprocess,sys
+base=os.environ.get('POSTERFLOW_API_URL','').rstrip('/')
+if not base:
+ print('Set POSTERFLOW_API_URL to your deployed PosterFlow HTTPS origin. No live-provider check was run.',file=sys.stderr)
+ sys.exit(2)
 root=Path(__file__).resolve().parents[1]
 urls=json.loads(subprocess.check_output(['node','--input-type=module','-e',"""
-import {defaults,catalogs,posterURL,manifestURL} from './src/config.js';
-const state={...defaults,catalogs:catalogs.map(c=>c[0])};
-const raw=Buffer.from(JSON.stringify({catalogs:state.catalogs,meta:{}})).toString('base64url');
-console.log(JSON.stringify([await manifestURL(state),'https://btttr.cc/'+raw+'/manifest.json',posterURL(state,'tt0816692'),posterURL({...state,showGenre:false,showRating:false,trendTags:false,qualityTags:false,ageRating:true,lang:'es-MX'},'tt0816692')]));
-"""],cwd=root,text=True))
+import {defaults,posterURL,manifestURL} from './src/config.js';
+const base=process.argv[1];console.log(JSON.stringify([base+'/api/status',await manifestURL(defaults,base),posterURL(defaults,'tt0816692',base)]));
+""",base],cwd=root,text=True))
 for i,url in enumerate(urls):
- result=subprocess.check_output(['curl','--fail','--silent','--show-error','--location','--max-time','40','--write-out','\n%{http_code}',url])
- body,status=result.rsplit(b'\n',1)
- assert status==b'200'
- if i<2:
-  data=json.loads(body)
-  assert data['id']=='community.betterposters'
-  assert len(data['catalogs'])>=13
-  print(('Compressed' if i==0 else 'Legacy')+' manifest: HTTP 200, '+str(len(data['catalogs']))+' catalogs',flush=True)
- else:
-  assert body[:3]==b'\xff\xd8\xff' or body[:8]==b'\x89PNG\r\n\x1a\n' or (body[:4]==b'RIFF' and body[8:12]==b'WEBP')
-  print('Poster variant '+str(i-1)+': HTTP 200, valid image signature',flush=True)
+ result=subprocess.check_output(['curl','--fail','--silent','--show-error','--max-time','60','--write-out','\n%{http_code}',url])
+ body,status=result.rsplit(b'\n',1);assert status==b'200'
+ if i==0:
+  data=json.loads(body);assert data['service']=='PosterFlow' and data['ready'] and data['addonId']=='community.posterflow'
+ elif i==1:
+  data=json.loads(body);assert data['id']=='community.posterflow' and data['catalogs']
+ else:assert body[:3]==b'\xff\xd8\xff'
+ print(['Own server readiness','Own addon manifest','Own rendered JPEG'][i]+': HTTP 200',flush=True)

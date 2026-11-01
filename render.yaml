@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: posterflow
+    runtime: docker
+    plan: free
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: TMDB_READ_TOKEN
+        sync: false
+      - key: TRUST_PROXY
+        value: "1"
+      - key: NODE_OPTIONS
+        value: --max-old-space-size=192

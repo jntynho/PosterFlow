@@ -10,15 +10,20 @@ with sync_playwright() as p:
  page.on('pageerror',lambda e:errors.append(str(e)))
  def route_external(route):
   url=route.request.url
-  if '/imdb/' in url:
+  if '/poster/' in url:
    requests.append(url)
    if network['image']:route.fulfill(status=200,content_type='image/svg+xml',body=POSTER)
    else:route.abort()
   elif '/manifest.json' in url:
-   if network['manifest']:route.fulfill(status=200,content_type='application/json',headers={'access-control-allow-origin':'*'},body=json.dumps({'id':'community.betterposters','catalogs':[{'id':'test'}]}))
+   if network['manifest']:route.fulfill(status=200,content_type='application/json',headers={'access-control-allow-origin':'*'},body=json.dumps({'id':'community.posterflow','catalogs':[{'id':'test'}]}))
    else:route.abort()
   else:route.abort()
- page.route('https://btttr.cc/**',route_external)
+ page.route('https://owned.posterflow.test/**',route_external)
+ def status(route):
+  route.fulfill(status=200,content_type='application/json',body=json.dumps({'service':'PosterFlow','addonId':'community.posterflow','ready':True,'publicBaseUrl':'https://owned.posterflow.test'}))
+ page.route('**/api/status',status)
+ forbidden=[]
+ page.on('request',lambda r:forbidden.append(r.url) if 'btttr.cc' in r.url else None)
  page.goto(os.environ.get('POSTERFLOW_TEST_URL','http://127.0.0.1:5173'))
  expect(page.locator('#preview-status')).to_have_text('Live preview')
  assert page.locator('html').get_attribute('lang')=='en'
@@ -46,16 +51,16 @@ with sync_playwright() as p:
  page.locator('[data-option="showRating"]').uncheck();expect(page.locator('[data-select="ratingSource"]')).to_be_disabled()
  page.locator('[data-option="showRating"]').check()
  page.locator('[data-option="ageRating"]').check()
- page.wait_for_function("document.querySelector('#poster-img').src.includes('a/imdb')")
+ page.wait_for_function("JSON.parse(atob(new URL(document.querySelector('#poster-img').src).pathname.split('/')[2].replaceAll('-','+').replaceAll('_','/'))).ageRating === true")
  expect(page.locator('#preview-status')).to_have_text('Live preview')
  # Several fast adjustments should coalesce into a single image request.
  before=len(requests)
- for key in ['trendTags','qualityTags','showGenre']:page.locator(f'[data-option="{key}"]').uncheck()
+ for key in ['trendTags','showGenre']:page.locator(f'[data-option="{key}"]').uncheck()
  page.wait_for_timeout(300);expect(page.locator('#preview-status')).to_have_text('Live preview')
  assert len(requests)==before+1
  page.locator('[data-select="lang"]').select_option('es-MX')
  page.locator('#next').click();page.locator('#generate').click()
- expect(page.locator('#instructions')).to_contain_text('Verified with BetterPosters')
+ expect(page.locator('#instructions')).to_contain_text('Verified with PosterFlow')
  addon=page.locator('#output').input_value();assert addon.endswith('/manifest.json')
  assert page.locator('#install').get_attribute('href').startswith('stremio://')
  page.locator('[data-step="2"]').click();page.locator('#next').click()
@@ -96,16 +101,16 @@ with sync_playwright() as p:
  page.locator('#generate').click();page.wait_for_function('window.pending.length===1')
  page.locator('[data-step="2"]').click();page.locator('[data-option="ageRating"]').uncheck()
  page.locator('#next').click();page.locator('#generate').click();page.wait_for_function('window.pending.length===2')
- page.evaluate("window.pending[0](new Response(JSON.stringify({id:'community.betterposters',catalogs:[{}]}),{status:200}))")
- expect(page.locator('#instructions')).to_contain_text('Checking the BetterPosters')
+ page.evaluate("window.pending[0](new Response(JSON.stringify({id:'community.posterflow',catalogs:[{}]}),{status:200}))")
+ expect(page.locator('#instructions')).to_contain_text('Checking the PosterFlow')
  expect(page.locator('#generate')).to_be_disabled()
- page.evaluate("()=>{window.pending[1](new Response(JSON.stringify({id:'community.betterposters',catalogs:[{}]}),{status:200}));window.fetch=window.originalFetch;}")
- expect(page.locator('#instructions')).to_contain_text('Verified with BetterPosters')
+ page.evaluate("()=>{window.pending[1](new Response(JSON.stringify({id:'community.posterflow',catalogs:[{}]}),{status:200}));window.fetch=window.originalFetch;}")
+ expect(page.locator('#instructions')).to_contain_text('Verified with PosterFlow')
  expect(page.locator('#generate')).to_be_enabled()
  # A hung manifest request has a bounded timeout and leaves an actionable result.
  page.evaluate("()=>{window.fetch=(url,options)=>new Promise((resolve,reject)=>options.signal.addEventListener('abort',()=>reject(new DOMException('Aborted','AbortError'))));}")
  page.clock.install()
- page.locator('#generate').click();expect(page.locator('#instructions')).to_contain_text('Checking the BetterPosters')
+ page.locator('#generate').click();expect(page.locator('#instructions')).to_contain_text('Checking the PosterFlow')
  page.clock.fast_forward(12001)
  expect(page.locator('#instructions')).to_contain_text('could not be verified')
  expect(page.locator('#generate')).to_be_enabled()
@@ -118,8 +123,17 @@ with sync_playwright() as p:
  page.locator('#select-all').click();expect(page.locator('#toast')).to_contain_text('could not be saved')
  assert page.locator('#catalog-grid input:checked').count()==13
  assert not errors,errors
+ assert not forbidden,forbidden
+ expect(page.locator('[data-option="qualityTags"]')).to_have_count(0) if page.locator('[data-option="qualityTags"]').count()==0 else expect(page.locator('[data-option="qualityTags"]')).to_be_disabled()
  print('PASS: dark theme, unchanged brand icon, preview above controls at 4 widths, both workflows, bulk selection/focus/search, debouncing/cache, disabled rating source, link persistence/invalidation, external verification/failure, image recovery, clipboard fallback, malformed/blocked storage; no JS errors.')
  favicon=page.locator('link[rel="icon"]').get_attribute('href')
  from urllib.parse import urljoin
  assert page.request.get(urljoin(page.url,favicon)).status==200
- context.close();b.close()
+ context.close()
+ # A running server without valid TMDB credentials must not offer usable links.
+ missing=b.new_context(viewport={'width':390,'height':844});offline=missing.new_page()
+ offline.route('**/api/status',lambda r:r.fulfill(status=200,content_type='application/json',body=json.dumps({'service':'PosterFlow','addonId':'community.posterflow','ready':False,'publicBaseUrl':'https://owned.posterflow.test'})))
+ offline.goto(os.environ.get('POSTERFLOW_TEST_URL','http://127.0.0.1:5173'))
+ expect(offline.locator('#connection-message')).to_contain_text('TMDB is not ready')
+ offline.locator('[data-step="3"]').click();expect(offline.locator('#generate')).to_be_disabled();expect(offline.locator('#result')).to_be_hidden()
+ missing.close();b.close()

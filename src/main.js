@@ -7,12 +7,21 @@ import {
   normalizeState,
   posterURL,
   manifestURL,
+  SERVICE,
+  setService,
 } from "./config.js";
 let saved;
 try {
   saved = JSON.parse(localStorage.getItem("posterflow-v1"));
 } catch {}
 let state = normalizeState(saved);
+let backendReady = false,
+  connecting = false,
+  connectionMessage = "Connecting to your PosterFlow server…";
+try {
+  const stored = localStorage.getItem("posterflow-server");
+  if (stored) setService(stored);
+} catch {}
 let step = 0,
   filter = "",
   result = "",
@@ -78,10 +87,10 @@ function notice(message) {
   notice.timer = setTimeout(() => (n.hidden = true), 4500);
 }
 function toggle(key, title, desc) {
-  return `<label class="setting"><span><strong>${title}</strong><small>${desc}</small></span><input type="checkbox" data-option="${key}" ${state[key] ? "checked" : ""}><span class="switch" aria-hidden="true"></span></label>`;
+  return `<label class="setting"><span><strong>${title}</strong><small>${desc}</small></span><input type="checkbox" ${key === "qualityTags" ? "disabled" : ""} data-option="${key}" ${state[key] ? "checked" : ""}><span class="switch" aria-hidden="true"></span></label>`;
 }
 function options() {
-  return `<div class="settings">${toggle("trendTags", "Trending labels", "Spot what everyone is watching.")}${toggle("qualityTags", "Quality badges", "4K, Dolby Vision and Atmos at a glance.")}${toggle("showGenre", "Genre labels", "A little context for your next pick.")}${toggle("showRating", "Ratings", "Know the score before you press play.")}${toggle("ageRating", "Age ratings", "Make more informed choices for every viewer.")}</div><div class="select-grid"><label>Rating source<select data-select="ratingSource">${ratingSources.map(([v, n]) => `<option value="${v}" ${state.ratingSource === v ? "selected" : ""}>${n}</option>`).join("")}</select></label><label>Poster language<select data-select="lang">${languages.map(([v, n]) => `<option value="${v}" ${state.lang === v ? "selected" : ""}>${n}</option>`).join("")}</select></label></div><p class="hint">Available badges vary by title. Watch progress requires account integration and is not available here yet.</p>`;
+  return `<div class="settings">${toggle("trendTags", "Trending labels", "Spot what everyone is watching.")}${toggle("qualityTags", "Quality badges", "Unavailable: requires verified playback-source data.")}${toggle("showGenre", "Genre labels", "A little context for your next pick.")}${toggle("showRating", "Ratings", "TMDB community ratings, directly from TMDB.")}${toggle("ageRating", "Age ratings", "Make more informed choices for every viewer.")}</div><div class="select-grid"><label>Rating source<select data-select="ratingSource">${ratingSources.map(([v, n]) => `<option value="${v}" ${state.ratingSource === v ? "selected" : ""}>${n}</option>`).join("")}</select></label><label>Poster language<select data-select="lang">${languages.map(([v, n]) => `<option value="${v}" ${state.lang === v ? "selected" : ""}>${n}</option>`).join("")}</select></label></div><p class="hint">Available badges vary by title. Watch progress requires account integration and is not available here yet.</p>`;
 }
 function content() {
   if (step === 0)
@@ -107,7 +116,7 @@ function content() {
       )
       .join(
         "",
-      )}</div><div class="account-note"><span class="tile-icon">${icon("shield")}</span><div><strong>No account. No extra steps.</strong><p>Public catalogs are ready to go. Personal accounts and private lists are not supported in PosterFlow yet.</p><a href="https://btttr.cc/configure" target="_blank" rel="noopener noreferrer">Manage accounts on BetterPosters ${icon("external")}</a></div></div>`;
+      )}</div><div class="account-note"><span class="tile-icon">${icon("shield")}</span><div><strong>No account. No extra steps.</strong><p>Your PosterFlow server provides public TMDB catalogs. Personal accounts and private lists are not supported yet.</p><a href="https://www.themoviedb.org" target="_blank" rel="noopener noreferrer">Movie data by TMDB ${icon("external")}</a></div></div>`;
   if (step === 1)
     return `<div class="section-top"><div><span class="eyebrow">A WORLD WORTH EXPLORING</span><h2>Build your collection</h2></div><span class="count">${state.catalogs.length} selected</span></div><label class="search"><span>⌕</span><input id="search" type="search" placeholder="Find a catalog…" aria-label="Search catalogs"></label><div class="list-tools"><span>Public catalogs</span><button class="text-button" id="select-all">${state.catalogs.length === catalogs.length ? "Clear all" : "Select all"}</button></div><div class="catalog-grid" id="catalog-grid"></div><label class="sort-label">Catalog order<select data-select="sort">${[
       ["shuffle", "Shuffle · a fresh mix every hour"],
@@ -121,12 +130,12 @@ function content() {
       )
       .join("")}</select></label>`;
   if (step === 2)
-    return `<span class="eyebrow">THE FINISHING TOUCHES</span><h2>Small details. Big difference.</h2><p class="muted">Choose what belongs on your covers. Leave the rest behind.</p>${options()}`;
-  return `<div class="finish-icon">✓</div><span class="eyebrow">READY WHEN YOU ARE</span><h2>Meet your new library.</h2><p class="muted">${state.mode === "catalog" ? `${state.catalogs.length} catalogs, styled your way. Create your addon link to install in Stremio.` : "Create a poster URL and add it to your AIOMetadata settings."}</p><div class="summary"><span>Poster language <b>${languages.find((l) => l[0] === state.lang)?.[1]}</b></span><span>Rating source <b>${state.showRating ? ratingSources.find((r) => r[0] === state.ratingSource)?.[1] : "Hidden"}</b></span><span>Account <b>Not required</b></span></div><button class="primary wide" id="generate" ${busy ? "disabled" : ""}>${busy ? "Creating your link…" : state.mode === "catalog" ? "Create addon link →" : "Create poster URL →"}</button><div id="result" hidden><label for="output">Your link is ready</label><textarea id="output" readonly dir="ltr" rows="4"></textarea><div class="result-actions"><button class="secondary" id="copy">Copy link</button><a class="primary" id="install">Open Stremio ${icon("external")}</a></div><p id="instructions" class="hint"></p></div><p class="service-note">Posters and catalogs are served by BetterPosters. PosterFlow is an independent interface; generated links depend on that external service.</p>`;
+    return `<span class="eyebrow">THE FINISHING TOUCHES</span><h2>Small details. Big difference.</h2><p class="muted">Choose what belongs on your covers. Ratings and artwork come from TMDB.</p>${options()}`;
+  return `<div class="finish-icon">✓</div><span class="eyebrow">READY WHEN YOU ARE</span><h2>Meet your new library.</h2><p class="muted">${state.mode === "catalog" ? `${state.catalogs.length} catalogs, styled your way. Create your addon link to install in Stremio.` : "Create a poster URL and add it to your AIOMetadata settings."}</p><div class="summary"><span>Poster language <b>${languages.find((l) => l[0] === state.lang)?.[1]}</b></span><span>Rating source <b>${state.showRating ? ratingSources.find((r) => r[0] === state.ratingSource)?.[1] : "Hidden"}</b></span><span>Account <b>Not required</b></span></div><button class="primary wide" id="generate" ${busy ? "disabled" : ""}>${busy ? "Creating your link…" : state.mode === "catalog" ? "Create addon link →" : "Create poster URL →"}</button><div id="result" hidden><label for="output">Your link is ready</label><textarea id="output" readonly dir="ltr" rows="4"></textarea><div class="result-actions"><button class="secondary" id="copy">Copy link</button><a class="primary" id="install">Open Stremio ${icon("external")}</a></div><p id="instructions" class="hint"></p></div><p class="service-note">Images are rendered by your own PosterFlow server. Film metadata and source artwork come directly from TMDB. This product uses the TMDB API but is not endorsed or certified by TMDB.</p>`;
 }
 function render() {
   const existingPreview = document.querySelector(".preview");
-  app.innerHTML = `<div class="app-shell"><header class="topbar"><a class="brand" href="#" aria-label="PosterFlow home"><span class="brand-symbol" aria-hidden="true">${icon("layers")}</span>Poster<span>Flow</span></a><div class="header-meta"><span class="connection-dot"></span> MADE FOR STREMIO <span class="header-divider"></span><button class="text-button" id="reset">${icon("reset")} Reset</button></div></header><main><section class="intro"><span class="eyebrow"><span class="tiny-star">✦</span> A BETTER VIEW OF YOUR LIBRARY</span><h1>${titles[step]}<span class="title-dot">.</span></h1><p>${descriptions[step]}</p></section><nav class="stepper" aria-label="Setup steps">${["Your setup", "Your catalogs", "Poster style", "Install"].map((n, i) => `<button ${state.mode === "poster" && i === 1 ? "hidden" : ""} class="nav-step ${step === i ? "active" : ""} ${i < step ? "complete" : ""}" data-step="${i}" ${state.mode === "poster" && i === 1 ? "disabled" : ""} ${step === i ? 'aria-current="step"' : ""}><span class="step-number">${i < step ? "✓" : visibleSteps().indexOf(i) + 1}</span><span>${n}</span></button>`).join("")}</nav><div class="editor-layout"><aside class="preview" aria-label="Live poster preview"><div class="preview-heading"><div><span class="preview-overline">THE BIG PICTURE</span><h2>A preview of what’s next.</h2></div><span class="live-pill" id="preview-status" role="status"><i></i> Loading</span></div><div class="poster-stage"><div class="poster"><img width="400" height="600" decoding="async" id="poster-img" alt="Interstellar poster with your selected settings"><div class="image-fallback" hidden>${icon("image")}<strong>INTERSTELLAR</strong><small>The preview couldn’t load.<br>Check your connection and try again.</small><button id="retry" class="secondary">Try again</button></div></div><div class="stage-caption"><strong>Interstellar</strong><span>2014 <i>·</i> Christopher Nolan</span></div></div><div class="preview-bottom"><span>${icon("sparkle")} Your changes, in real time</span><button id="refresh" class="icon-button" aria-label="Refresh preview">${icon("reset")}</button></div><div class="preview-tip">A real cover, served by BetterPosters.<br>Some details depend on the available title data.</div></aside><section id="settings" class="panel" aria-label="Addon settings" tabindex="-1">${content()}<footer class="panel-footer"><button class="text-button" id="back" ${step === 0 ? "disabled" : ""}>${icon("back")} Back</button><span class="step-caption">STEP ${visibleSteps().indexOf(step) + 1} OF ${visibleSteps().length}</span>${step < 3 ? '<button class="primary" id="next">Continue ' + icon("arrow") + "</button>" : '<button class="text-button" id="edit">Edit poster style ' + icon("arrow") + "</button>"}</footer></section></div><footer class="site-footer"><span>Less clutter. More cinema.</span><span>Independent interface for <a href="https://btttr.cc" target="_blank" rel="noopener noreferrer">BetterPosters ${icon("external")}</a></span></footer></main></div><div id="toast" role="status" hidden></div>`;
+  app.innerHTML = `<div class="app-shell"><header class="topbar"><a class="brand" href="#" aria-label="PosterFlow home"><span class="brand-symbol" aria-hidden="true">${icon("layers")}</span>Poster<span>Flow</span></a><div class="header-meta"><span class="connection-dot"></span> MADE FOR STREMIO <span class="header-divider"></span><button class="text-button" id="reset">${icon("reset")} Reset</button></div></header><main><section class="intro"><span class="eyebrow"><span class="tiny-star">✦</span> A BETTER VIEW OF YOUR LIBRARY</span><h1>${titles[step]}<span class="title-dot">.</span></h1><p>${descriptions[step]}</p></section><nav class="stepper" aria-label="Setup steps">${["Your setup", "Your catalogs", "Poster style", "Install"].map((n, i) => `<button ${state.mode === "poster" && i === 1 ? "hidden" : ""} class="nav-step ${step === i ? "active" : ""} ${i < step ? "complete" : ""}" data-step="${i}" ${state.mode === "poster" && i === 1 ? "disabled" : ""} ${step === i ? 'aria-current="step"' : ""}><span class="step-number">${i < step ? "✓" : visibleSteps().indexOf(i) + 1}</span><span>${n}</span></button>`).join("")}</nav><section class="server-connection" aria-label="Server connection"><div><strong id="connection-title">Your PosterFlow server</strong><p id="connection-message" role="status"></p></div><form id="server-form"><label class="sr-only" for="server-url">PosterFlow server URL</label><input id="server-url" type="url" placeholder="https://your-posterflow-server.onrender.com" autocomplete="url" required><button class="secondary" type="submit" id="connect-server">Connect</button></form></section><div class="editor-layout"><aside class="preview" aria-label="Live poster preview"><div class="preview-heading"><div><span class="preview-overline">THE BIG PICTURE</span><h2>A preview of what’s next.</h2></div><span class="live-pill" id="preview-status" role="status"><i></i> Loading</span></div><div class="poster-stage"><div class="poster"><img width="400" height="600" decoding="async" id="poster-img" alt="Interstellar poster with your selected settings"><div class="image-fallback" hidden>${icon("image")}<strong>INTERSTELLAR</strong><small>The preview couldn’t load.<br>Check your connection and try again.</small><button id="retry" class="secondary">Try again</button></div></div><div class="stage-caption"><strong>Interstellar</strong><span>2014 <i>·</i> Christopher Nolan</span></div></div><div class="preview-bottom"><span>${icon("sparkle")} Your changes, in real time</span><button id="refresh" class="icon-button" aria-label="Refresh preview">${icon("reset")}</button></div><div class="preview-tip">Rendered by your PosterFlow server.<br>Metadata and source artwork by TMDB.</div></aside><section id="settings" class="panel" aria-label="Addon settings" tabindex="-1">${content()}<footer class="panel-footer"><button class="text-button" id="back" ${step === 0 ? "disabled" : ""}>${icon("back")} Back</button><span class="step-caption">STEP ${visibleSteps().indexOf(step) + 1} OF ${visibleSteps().length}</span>${step < 3 ? '<button class="primary" id="next">Continue ' + icon("arrow") + "</button>" : '<button class="text-button" id="edit">Edit poster style ' + icon("arrow") + "</button>"}</footer></section></div><footer class="site-footer"><span>Less clutter. More cinema.</span><span>Powered by PosterFlow · <a href="https://www.themoviedb.org" target="_blank" rel="noopener noreferrer">Data by TMDB ${icon("external")}</a></span></footer></main></div><div id="toast" role="status" hidden></div>`;
   if (existingPreview)
     document.querySelector(".preview").replaceWith(existingPreview);
   document.querySelector(".brand").onclick = (e) => {
@@ -204,6 +213,21 @@ function render() {
       notice("Select the link and copy it manually.");
     }
   });
+  const connection = document.querySelector(".server-connection");
+  connection.classList.toggle("connected", backendReady);
+  document.querySelector("#connection-message").textContent = connectionMessage;
+  document.querySelector("#server-url").value = SERVICE;
+  document.querySelector("#connect-server").disabled = connecting;
+  document.querySelector("#server-form").onsubmit = async (e) => {
+    e.preventDefault();
+    try {
+      setService(document.querySelector("#server-url").value);
+      persist();
+      await connectServer();
+    } catch (error) {
+      notice(error.message);
+    }
+  };
   renderCatalogs();
   syncRating();
   renderResult();
@@ -278,6 +302,16 @@ function setPreviewStatus(status) {
 }
 function updatePreview(force = false) {
   clearTimeout(previewTimer);
+  if (!backendReady) {
+    setPreviewStatus("error");
+    document.querySelector("#poster-img").hidden = true;
+    document.querySelector(".image-fallback").hidden = false;
+    document.querySelector(".image-fallback small").textContent =
+      "Connect your own PosterFlow server to load a live preview.";
+    return;
+  }
+  document.querySelector(".image-fallback small").textContent =
+    "The preview could not load. Check your server connection and try again.";
   const url = posterURL(state, "tt0816692");
   if (!force && url === previewURL && previewStatus !== "idle") return;
   previewURL = url;
@@ -322,7 +356,7 @@ function renderResult() {
   if (!container) return;
   container.hidden = !result;
   const button = document.querySelector("#generate");
-  button.disabled = busy;
+  button.disabled = busy || !backendReady;
   button.textContent = busy
     ? "Creating your link…"
     : result
@@ -343,6 +377,10 @@ function renderResult() {
 }
 async function generate() {
   if (busy) return;
+  if (!backendReady) {
+    notice("Connect your PosterFlow server first.");
+    return;
+  }
   busy = true;
   const revision = generation;
   renderResult();
@@ -354,7 +392,7 @@ async function generate() {
         : posterURL(snapshot);
     if (revision !== generation) return;
     result = url;
-    verification = "Link created. Checking the BetterPosters addon…";
+    verification = "Link created. Checking the PosterFlow addon…";
     renderResult();
     if (snapshot.mode === "catalog") {
       verificationRequest?.abort();
@@ -366,23 +404,21 @@ async function generate() {
         if (!response.ok) throw new Error("Service request failed");
         const manifest = await response.json();
         if (
-          manifest.id !== "community.betterposters" ||
+          manifest.id !== "community.posterflow" ||
           !Array.isArray(manifest.catalogs) ||
           !manifest.catalogs.length
         )
           throw new Error("Unexpected addon response");
         if (revision === generation) {
           verification =
-            "Verified with BetterPosters. Open Stremio, review the addon, then confirm installation.";
+            "Verified with PosterFlow. Open Stremio, review the addon, then confirm installation.";
           notice("Addon link verified.");
         }
       } catch {
         if (revision === generation) {
           verification =
-            "Link created, but the external service could not be verified. Check your connection or try again before installing.";
-          notice(
-            "Could not verify BetterPosters. Your link is still available.",
-          );
+            "Link created, but your PosterFlow server could not be verified. Check its status before installing.";
+          notice("Could not verify your server. Your link is still available.");
         }
       } finally {
         clearTimeout(timeout);
@@ -399,4 +435,50 @@ async function generate() {
     }
   }
 }
+async function connectServer() {
+  if (connecting) return;
+  connecting = true;
+  backendReady = false;
+  previewURL = "";
+  previewRequest++;
+  connectionMessage = "Connecting to your PosterFlow server…";
+  render();
+  try {
+    if (!SERVICE)
+      throw new Error(
+        "Connect your deployed PosterFlow server. GitHub Pages cannot run the image-rendering backend.",
+      );
+    const response = await fetch(SERVICE + "/api/status", {
+      signal: AbortSignal.timeout(12000),
+    });
+    if (!response.ok)
+      throw new Error("The PosterFlow server could not be reached.");
+    const status = await response.json();
+    if (
+      status.service !== "PosterFlow" ||
+      status.addonId !== "community.posterflow"
+    )
+      throw new Error("This URL is not a compatible PosterFlow server.");
+    if (!status.ready)
+      throw new Error(
+        "Your server is running, but TMDB is not ready. Check TMDB_READ_TOKEN and network access in Render settings.",
+      );
+    setService(status.publicBaseUrl);
+    backendReady = true;
+    connectionMessage =
+      "Connected. Posters and addon links are generated by your own server.";
+    try {
+      localStorage.setItem("posterflow-server", SERVICE);
+    } catch {}
+  } catch (error) {
+    connectionMessage =
+      error.name === "TimeoutError"
+        ? "The server did not respond in time. A sleeping Render service may need a moment to start; try again."
+        : error.message;
+  } finally {
+    connecting = false;
+    render();
+  }
+}
 render();
+connectServer();

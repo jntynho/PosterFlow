@@ -1,130 +1,90 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { inflateRawSync } from "node:zlib";
-import { defaults, posterURL, manifestURL } from "../src/config.js";
-test("poster route combinations preserve supported options", () => {
+import {
+  defaults,
+  normalizeState,
+  posterURL,
+  manifestURL,
+  encodeState,
+  validateService,
+  languages,
+  catalogs,
+} from "../src/config.js";
+import { decodeConfig } from "../server/app.js";
+const base = "https://posterflow.example";
+test("generated links are exclusively owned PosterFlow endpoints", async () => {
   for (const showGenre of [true, false])
     for (const showRating of [true, false])
-      for (const qualityTags of [true, false])
-        for (const ageRating of [true, false]) {
-          const s = {
-            ...defaults,
-            lang: "ar",
-            showGenre,
-            showRating,
-            qualityTags,
-            ageRating,
-          };
-          const u = new URL(posterURL(s, "tt0816692"));
-          assert.equal(u.hostname, "btttr.cc");
-          assert.equal(u.searchParams.get("lang"), "ar");
-          assert.ok(u.pathname.endsWith("/tt0816692.jpg"));
-          const route = u.pathname.split("/")[1];
-          assert.equal(route.includes("q"), qualityTags);
-          assert.equal(route.endsWith("a"), ageRating);
-          if (!showGenre && !showRating)
-            assert.ok(route.startsWith("poster-n"));
-        }
-});
-test("external addon configuration round trips all selected settings", async () => {
-  const s = {
-    ...defaults,
-    lang: "ja",
-    sort: "newest",
-    catalogs: ["top", "trending-s"],
-    trendTags: false,
-  };
-  const url = await manifestURL(s);
-  const encoded = new URL(url).pathname.split("/")[1];
-  const c = JSON.parse(
-    inflateRawSync(Buffer.from(encoded, "base64url")).toString(),
+      for (const ageRating of [true, false]) {
+        const state = { ...defaults, showGenre, showRating, ageRating };
+        const url = new URL(posterURL(state, "tt0816692", base));
+        assert.equal(url.origin, base);
+        assert.ok(url.pathname.endsWith("/poster/tt0816692.jpg"));
+        const config = decodeConfig(url.pathname.split("/")[2]);
+        assert.equal(config.showGenre, showGenre);
+        assert.equal(config.showRating, showRating);
+        assert.equal(config.ageRating, ageRating);
+        assert.deepEqual(config.catalogs, []);
+      }
+  const addon = new URL(await manifestURL(defaults, base));
+  assert.equal(addon.origin, base);
+  assert.ok(addon.pathname.endsWith("/manifest.json"));
+  assert.deepEqual(
+    decodeConfig(addon.pathname.split("/")[2]).catalogs,
+    defaults.catalogs,
   );
-  assert.deepEqual(c.catalogs, s.catalogs);
-  assert.equal(c.poster.lang, "ja");
-  assert.equal(c.poster.sort, "newest");
-  assert.equal(c.poster.top, "none");
-  assert.equal(c.poster.progress, false);
-  assert.equal(c.trakt, undefined);
+  assert.ok(posterURL(defaults, undefined, base).includes("{imdb_id}"));
 });
-test("empty catalogs cannot create a misleading addon URL", async () => {
-  await assert.rejects(
-    () => manifestURL({ ...defaults, catalogs: [] }),
-    /Choose at least one catalog/,
+test("URLs contain only supported non-secret settings", () => {
+  const state = decodeConfig(
+    encodeState({
+      ...defaults,
+      token: "private",
+      qualityTags: true,
+      ratingSource: "IM",
+      lang: "es-MX",
+      catalogs: ["top", "top", "bad"],
+    }),
   );
-});
-test("poster URL preserves template and disables tags", () => {
-  const u = posterURL({
-    ...defaults,
-    trendTags: false,
-    lang: "en",
-    ratingSource: "avg",
-  });
-  assert.ok(u.includes("{imdb_id}"));
-  assert.ok(u.endsWith("?tag=none"));
-});
-
-test("normalization rejects malformed preferences and deduplicates catalogs", async () => {
-  const { normalizeState, languages, catalogs } =
-    await import("../src/config.js");
-  const state = normalizeState({
-    mode: "<script>",
-    lang: "invalid",
-    qualityTags: "false",
-    catalogs: ["top", "top", "missing", null],
-  });
-  assert.equal(state.mode, "catalog");
-  assert.equal(state.lang, "en");
-  assert.equal(state.qualityTags, true);
+  assert.equal(state.token, undefined);
+  assert.equal(state.qualityTags, false);
+  assert.equal(state.ratingSource, "TM");
+  assert.equal(state.lang, "es-MX");
   assert.deepEqual(state.catalogs, ["top"]);
   assert.equal(catalogs.length, 13);
-  assert.ok(languages.some((l) => l[0] === "es-MX"));
   assert.ok(languages.some((l) => l[0] === "pt-BR"));
   assert.deepEqual(normalizeState(null), defaults);
-  assert.deepEqual(normalizeState([]), defaults);
-  const clone = normalizeState({});
-  clone.catalogs.pop();
+  const state2 = normalizeState({});
+  state2.catalogs.pop();
   assert.equal(defaults.catalogs.length, 3);
 });
-test("older browsers produce the supported plain JSON configuration", async () => {
-  const { encodeConfig } = await import("../src/config.js");
-  const original = globalThis.CompressionStream;
-  try {
-    globalThis.CompressionStream = undefined;
-    const c = { catalogs: ["top"], meta: {} };
-    assert.deepEqual(
-      JSON.parse(new TextDecoder().decode(await encodeConfig(c))),
-      c,
-    );
-  } finally {
-    globalThis.CompressionStream = original;
-  }
-});
-test("every poster option combination yields the complete expected route", () => {
-  for (const showGenre of [true, false])
-    for (const showRating of [true, false])
-      for (const qualityTags of [true, false])
-        for (const ageRating of [true, false]) {
-          const state = {
-            ...defaults,
-            showGenre,
-            showRating,
-            qualityTags,
-            ageRating,
-          };
-          const stem =
-            showGenre && showRating
-              ? "poster"
-              : showGenre
-                ? "poster-g"
-                : showRating
-                  ? "poster-r"
-                  : "poster-n";
-          const tail = (qualityTags ? "q" : "") + (ageRating ? "a" : "");
-          const expected =
-            stem + (tail ? (stem.includes("-") ? "" : "-") + tail : "");
-          assert.equal(
-            new URL(posterURL(state, "tt0816692")).pathname,
-            `/${expected}/imdb/poster-default/tt0816692.jpg`,
-          );
-        }
+test("bad configs, unconnected services and unsafe origins are rejected", async () => {
+  for (const token of [
+    "a".repeat(4100),
+    "%bad",
+    Buffer.from("{}").toString("base64url"),
+    Buffer.from("null").toString("base64url"),
+  ])
+    assert.throws(() => decodeConfig(token));
+  for (const origin of [
+    "javascript:alert(1)",
+    "http://public.example",
+    "https://user:pass@example.com",
+    "https://example.com/path",
+    "https://example.com?key=secret",
+  ])
+    assert.throws(() => validateService(origin));
+  assert.equal(
+    validateService("http://localhost:3000"),
+    "http://localhost:3000",
+  );
+  assert.throws(() => posterURL(defaults, "tt0816692", ""), /Connect/);
+  assert.throws(
+    () => posterURL(defaults, "https://attacker.example/file", base),
+    /Invalid/,
+  );
+  await assert.rejects(
+    () => manifestURL({ ...defaults, catalogs: [] }, base),
+    /Choose/,
+  );
 });

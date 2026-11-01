@@ -1594,3 +1594,5 @@ a svg.external-icon {
   height: 12px;
   margin-left: 3px;
 }
+
+.server-connection{max-width:900px;margin:0 auto 24px;padding:20px 24px;border:1px solid #57462a;background:#241f18;border-radius:14px;display:grid;gap:14px}.server-connection strong{font-size:12px;color:#e4d4ac}.server-connection p{font-size:11px;line-height:1.8;color:#bdaf95;margin:6px 0 0}.server-connection form{display:flex;gap:10px}.server-connection input{min-width:0;flex:1;background:#17181f;border:1px solid #47434b;border-radius:8px;color:#ddd6ed;padding:11px;font-size:11px}.server-connection.connected{border-color:#393245;background:#1b1924;padding:14px 20px}.server-connection.connected strong{color:#c9bdec}.server-connection.connected p{color:#a9a1ba}.server-connection.connected form{display:none}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}.setting:has(input:disabled){opacity:.55;cursor:not-allowed}.setting input:disabled{cursor:not-allowed}@media(max-width:420px){.server-connection{padding:18px}.server-connection form{flex-direction:column}}

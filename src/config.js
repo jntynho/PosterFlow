@@ -1,26 +1,26 @@
 export const defaults = {
   mode: "catalog",
   trendTags: true,
-  qualityTags: true,
+  qualityTags: false,
   showGenre: true,
   showRating: true,
   ageRating: false,
-  ratingSource: "IM",
+  ratingSource: "TM",
   lang: "en",
   sort: "shuffle",
   catalogs: ["trending-m", "trending-s", "top"],
 };
 export const catalogs = [
-  ["trending-m", "Trending movies", "Trakt · Movies", "↗"],
-  ["trending-s", "Trending series", "Trakt · Series", "↗"],
-  ["popular-m", "Popular movies", "Trakt · Movies", "♡"],
-  ["popular-s", "Popular series", "Trakt · Series", "♡"],
+  ["trending-m", "Trending movies", "TMDB · Movies", "↗"],
+  ["trending-s", "Trending series", "TMDB · Series", "↗"],
+  ["popular-m", "Popular movies", "TMDB · Movies", "♡"],
+  ["popular-s", "Popular series", "TMDB · Series", "♡"],
   ["top", "Top rated", "TMDB · Movies", "★"],
-  ["latest-m", "New movies", "TMDB · Movies", "✦"],
-  ["latest-s", "New series", "TMDB · Series", "✦"],
-  ["today-m", "Top 25 movies today", "TMDB · Movies", "◷"],
-  ["today-s", "Top 25 series today", "TMDB · Series", "◷"],
-  ["today-a", "Top anime today", "TMDB · Anime", "✧"],
+  ["latest-m", "Now playing", "TMDB · Movies", "✦"],
+  ["latest-s", "On air", "TMDB · Series", "✦"],
+  ["today-m", "Movies trending today", "TMDB · Movies", "◷"],
+  ["today-s", "Series trending today", "TMDB · Series", "◷"],
+  ["today-a", "Popular anime", "TMDB · Anime", "✧"],
   ["coming-m", "Upcoming movies", "TMDB · Movies", "◷"],
   ["coming-s", "Upcoming series", "TMDB · Series", "◷"],
   ["coming-a", "Upcoming anime", "TMDB · Anime", "✧"],
@@ -48,16 +48,7 @@ export const languages = [
   ["sv", "Swedish"],
   ["cs", "Czech"],
 ];
-export const ratingSources = [
-  ["avg", "All sources · average"],
-  ["IM", "IMDb"],
-  ["TM", "TMDB"],
-  ["RT", "Rotten Tomatoes"],
-  ["MC", "Metacritic"],
-  ["TR", "Trakt"],
-  ["LB", "Letterboxd"],
-  ["RE", "Roger Ebert"],
-];
+export const ratingSources = [["TM", "TMDB"]];
 export function normalizeState(saved) {
   const state = { ...defaults, catalogs: [...defaults.catalogs] };
   if (!saved || typeof saved !== "object" || Array.isArray(saved)) return state;
@@ -82,61 +73,59 @@ export function normalizeState(saved) {
         saved.catalogs.filter((id) => catalogs.some((c) => c[0] === id)),
       ),
     ];
+  state.qualityTags = false;
   return state;
 }
-export const SERVICE = "https://btttr.cc";
-export function posterURL(s, id = "{imdb_id}") {
-  let base =
-    s.showGenre && s.showRating
-      ? "poster"
-      : s.showGenre
-        ? "poster-g"
-        : s.showRating
-          ? "poster-r"
-          : "poster-n";
-  const suffix = (s.qualityTags ? "q" : "") + (s.ageRating ? "a" : "");
-  if (suffix) base += (base.includes("-") ? "" : "-") + suffix;
-  const q = new URLSearchParams();
-  if (!s.trendTags) q.set("tag", "none");
-  if (s.lang !== "en") q.set("lang", s.lang);
-  if (s.ratingSource !== "avg") q.set("rs", s.ratingSource);
-  return `${SERVICE}/${base}/imdb/poster-default/${id}.jpg${q.size ? "?" + q : ""}`;
+export function validateService(value) {
+  const url = new URL(value);
+  const local = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+  if (
+    url.username ||
+    url.password ||
+    url.pathname !== "/" ||
+    url.search ||
+    url.hash ||
+    !(url.protocol === "https:" || (local && url.protocol === "http:"))
+  )
+    throw new Error("Enter the HTTPS root URL of your PosterFlow server.");
+  return url.origin;
 }
-export async function manifestURL(s) {
-  if (!s.catalogs.length) throw new Error("Choose at least one catalog.");
-  const config = {
-    catalogs: s.catalogs,
-    meta: {},
-    poster: {
-      top: s.trendTags ? "auto" : "none",
-      progress: false,
-      trendTags: s.trendTags,
-      qualityTags: s.qualityTags,
-      showGenre: s.showGenre,
-      showRating: s.showRating,
-      ageRating: s.ageRating,
-      ratingSource: s.ratingSource,
-      lang: s.lang,
-      sort: s.sort,
-    },
-  };
-  const bytes = await encodeConfig(config);
-  const encoded = btoa(String.fromCharCode(...bytes))
+let initialService = import.meta.env?.VITE_API_BASE_URL || "";
+if (
+  !initialService &&
+  globalThis.location &&
+  !globalThis.location.hostname.endsWith(".github.io")
+)
+  initialService = globalThis.location.origin;
+export let SERVICE = "";
+try {
+  if (initialService) SERVICE = validateService(initialService);
+} catch {}
+export function setService(value) {
+  SERVICE = validateService(value);
+  return SERVICE;
+}
+export function encodeState(state) {
+  const bytes = new TextEncoder().encode(
+    JSON.stringify({ v: 1, ...normalizeState(state) }),
+  );
+  return btoa(String.fromCharCode(...bytes))
     .replaceAll("+", "-")
     .replaceAll("/", "_")
     .replaceAll("=", "");
-  return `${SERVICE}/${encoded}/manifest.json`;
 }
-
-export async function encodeConfig(config) {
-  const raw = new TextEncoder().encode(JSON.stringify(config));
-  try {
-    const stream = new Blob([raw])
-      .stream()
-      .pipeThrough(new CompressionStream("deflate-raw"));
-    return new Uint8Array(await new Response(stream).arrayBuffer());
-  } catch {
-    // BetterPosters also accepts the original, uncompressed JSON configuration.
-    return raw;
-  }
+export function posterURL(state, id = "{imdb_id}", base = SERVICE) {
+  if (!base) throw new Error("Connect your PosterFlow server first.");
+  if (
+    id !== "{imdb_id}" &&
+    !/^(tt\d{5,12}|tmdb:(?:(movie|series):)?\d{1,10})$/.test(id)
+  )
+    throw new Error("Invalid title ID.");
+  return `${validateService(base)}/v1/${encodeState({ ...state, catalogs: [], mode: "poster" })}/poster/${id}.jpg`;
+}
+export async function manifestURL(state, base = SERVICE) {
+  if (!normalizeState(state).catalogs.length)
+    throw new Error("Choose at least one catalog.");
+  if (!base) throw new Error("Connect your PosterFlow server first.");
+  return `${validateService(base)}/v1/${encodeState(state)}/manifest.json`;
 }

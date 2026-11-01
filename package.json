@@ -7,9 +7,16 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/*.test.js",
+    "start": "node --use-env-proxy server/index.js"
   },
   "devDependencies": {
     "vite": "8.3.5"
+  },
+  "dependencies": {
+    "sharp": "0.35.5"
+  },
+  "engines": {
+    "node": ">=24 <25"
   }
 }
