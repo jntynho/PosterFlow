@@ -1,6 +1,6 @@
 # PosterFlow
 
-An independent Arabic RTL configuration interface for BetterPosters / Stremio, built with vanilla JavaScript and Vite. Ivory surfaces, warm terracotta controls, responsive layout, accessible native form inputs, and real poster previews.
+An independent English configuration interface for BetterPosters / Stremio, built with vanilla JavaScript and Vite. White surfaces, soft lavender accents, a horizontal setup flow, responsive layout, accessible native form inputs, and real poster previews.
 
 ## Implemented
 
@@ -33,7 +33,7 @@ npm run build
 npm run preview -- --port 4173
 ```
 
-Tests verify URL options and decompress the addon configuration to validate the actual payload. `tests/browser.py` is a supplementary Playwright browser smoke test for a dev server on port 5173. It uses Python Playwright and Chromium at `/usr/bin/chromium`, honors `HTTPS_PROXY`, and checks both workflows, search, saved preferences and overflow at three viewport widths. Run `python tests/browser.py` with the server running. Screenshots go to `/tmp`; no secrets are used. It does not replace end-to-end testing inside a real Stremio client.
+Tests verify URL options and decompress the addon configuration to validate the actual payload. `tests/browser.py` is a supplementary Playwright browser smoke test for a dev server on port 5173. It uses Python Playwright and Chromium at `/usr/bin/chromium`, honors `HTTPS_PROXY`, and checks both workflows, search, saved preferences and overflow at four viewport widths. Run `python tests/browser.py` with the server running. Screenshots go to `/tmp`; no secrets are used. It does not replace end-to-end testing inside a real Stremio client.
 
 ## Deploy
 
