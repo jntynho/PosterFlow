@@ -37,4 +37,4 @@ Tests verify URL options and decompress the addon configuration to validate the 
 
 ## Deploy
 
-A manual GitHub Pages workflow builds/tests/uploads `dist`. Vite uses relative asset paths for project hosting. After review, push the files, set repository **Settings → Pages → Source → GitHub Actions**, and manually run **Deploy to GitHub Pages**. Deployment has not been run, and this work has not been committed or pushed.
+The GitHub Pages workflow builds/tests/uploads `dist` on pushes to `main` or manual dispatch. Vite uses relative asset paths for project hosting. The initial version has been pushed to `main`. Set repository **Settings → Pages → Source → GitHub Actions**, then run **Deploy to GitHub Pages** from the Actions tab if needed. Pages activation and public deployment have not yet been verified; GitHub management API requests from this environment are denied.
